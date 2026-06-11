@@ -1,0 +1,84 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Java / Spring Boot
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.pid
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper
+!.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# Angular / Node
+node_modules/
+dist/
+.angular/
+.cache/
+coverage/
+.nyc_output/
+
+# Package manager caches
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Angular local config
+frontend/.angular/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Backend local build output
+backend/target/
+backend/build/
+backend/out/
+
+# Docker and local runtime data
+*.pid
+*.seed
+*.pid.lock
+docker-data/
+data/
+uploads/
+backend/uploads/
+tmp/
+temp/
