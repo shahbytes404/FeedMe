@@ -1,6 +1,7 @@
 package com.shahbytes.feedme.controllers;
 
 import com.shahbytes.feedme.dtos.FollowResponse;
+import com.shahbytes.feedme.dtos.FollowingResponse;
 import com.shahbytes.feedme.services.FeedmeService;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +13,11 @@ public class FollowController {
 
     public FollowController(FeedmeService feedmeService) {
         this.feedmeService = feedmeService;
+    }
+
+    @GetMapping
+    public FollowingResponse getFollowing(@RequestParam String followerId) {
+        return feedmeService.getFollowing(followerId);
     }
 
     @PostMapping("/{userId}")

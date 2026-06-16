@@ -8,6 +8,7 @@ import com.shahbytes.feedme.repository.PostRepository;
 import com.shahbytes.feedme.repository.UserProfileRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -504,6 +505,30 @@ public class FeedmeService {
         } catch (Exception exception) {
             throw exception;
         }
+    }
+
+    public List<UserProfileResponse> getUsers() {
+        return userProfileRepository.findAll(Sort.by("id")).stream()
+                .map(this::toUserProfileResponse)
+                .toList();
+    }
+
+    private UserProfileResponse toUserProfileResponse(UserProfile user) {
+        return new UserProfileResponse(
+                user.getId(),
+                user.getHandle(),
+                user.getName(),
+                user.getBio(),
+                user.isHotUser()
+        );
+    }
+
+    public FollowingResponse getFollowing(String followerId) {
+        getUser(followerId);
+        List<String> targetUserIds = followRelationRepository.findByFollower_Id(followerId).stream()
+                .map(relation -> relation.getTargetUser().getId())
+                .toList();
+        return new FollowingResponse(followerId, targetUserIds, targetUserIds.size());
     }
 
 
