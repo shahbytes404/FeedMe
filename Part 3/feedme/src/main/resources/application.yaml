@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: feedme
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/feedme
+    username: feedme
+    password: feedme
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      repositories:
+        enabled: false
+
+feed:
+  async:
+    enabled: true
+
+    stream:
+      key: feed:events
+
+    consumer:
+      group: feed-workers
+      name: worker-1
+      max-processing-attempts: 5
+      dlq-stream-key: feed:events:dlq
+      reclaim-enabled: true
+      reclaims-fixed-delay-ms: 5000
+      reclaim-idle-ms: 30000
+      reclaim-batch-size: 50
+
