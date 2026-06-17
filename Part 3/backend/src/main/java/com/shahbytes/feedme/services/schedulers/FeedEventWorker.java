@@ -6,6 +6,7 @@ import com.shahbytes.feedme.models.ProcessedFeedEvent;
 import com.shahbytes.feedme.repository.DeadLetterFeedEventRepository;
 import com.shahbytes.feedme.repository.FeedEventFailureRepository;
 import com.shahbytes.feedme.repository.ProcessedFeedEventRepository;
+import com.shahbytes.feedme.services.FeedMetricsService;
 import com.shahbytes.feedme.services.FeedmeService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,6 +59,7 @@ public class FeedEventWorker {
     private final boolean reclaimEnabled;
     private final long reclaimIdleMs;
     private final int reclaimBatchSize;
+    private final FeedMetricsService feedMetricsService;
 
 
     public FeedEventWorker(StringRedisTemplate redisTemplate,
@@ -73,7 +75,7 @@ public class FeedEventWorker {
                            @Value("${feed.async.consumer.dlq-stream-key}") String deadLetterStreamKey,
                            @Value("${feed.async.consumer.reclaim-enabled}") boolean reclaimEnabled,
                            @Value("${feed.async.consumer.reclaim-idle-ms}") long reclaimIdleMs,
-                           @Value("${feed.async.consumer.reclaim-batch-size}") int reclaimBatchSize) {
+                           @Value("${feed.async.consumer.reclaim-batch-size}") int reclaimBatchSize, FeedMetricsService feedMetricsService) {
         this.redisTemplate = redisTemplate;
         this.processedFeedEventRepository = processedFeedEventRepository;
         this.deadLetterFeedEventRepository = deadLetterFeedEventRepository;
@@ -89,6 +91,7 @@ public class FeedEventWorker {
         this.reclaimEnabled = reclaimEnabled;
         this.reclaimIdleMs = reclaimIdleMs;
         this.reclaimBatchSize = reclaimBatchSize;
+        this.feedMetricsService = feedMetricsService;
     }
 
     @Scheduled(fixedDelayString = "${feed.async.consumer.fixed-delay-ms:1000}")
@@ -102,7 +105,7 @@ public class FeedEventWorker {
                     StreamOffset.create(streamKey, ReadOffset.lastConsumed())
             );
         } catch (Exception exception) {
-            // TODO: add metrics here
+            feedMetricsService.recordServiceError("consume_post_event", "REDIS_READ_ERROR");
             return;
         }
 
@@ -111,7 +114,7 @@ public class FeedEventWorker {
         }
 
         for (MapRecord<String, Object, Object> record : records) {
-            processRecord(record);
+            processRecord(record, "consume_post_event");
         }
     }
 
@@ -127,6 +130,7 @@ public class FeedEventWorker {
                     StreamOffset.create(streamKey, ReadOffset.from("0"))
             );
         } catch (Exception exception) {
+            feedMetricsService.recordServiceError("recover_post_event", "REDIS_READ_ERROR");
             return;
         }
 
@@ -135,7 +139,7 @@ public class FeedEventWorker {
         }
 
         for (MapRecord<String, Object, Object> record : pendingRecords) {
-            processRecord(record);
+            processRecord(record, "recover_post_event");
         }
     }
 
@@ -150,7 +154,7 @@ public class FeedEventWorker {
         List<MapRecord<String, Object, Object>> claimedRecords = claimStalePendingRecords();
 
         for (MapRecord<String, Object, Object> record : claimedRecords) {
-            processRecord(record);
+            processRecord(record, "reclaim_post_event");
         }
     }
 
@@ -183,6 +187,7 @@ public class FeedEventWorker {
                     staleRecordIds.toArray(new RecordId[0])
             );
         } catch (Exception e) {
+            feedMetricsService.recordServiceError("reclaim_post_event", "REDIS_CLAIM_ERROR");
             return List.of();
         }
     }
@@ -195,7 +200,7 @@ public class FeedEventWorker {
         return pendingMessage.getElapsedTimeSinceLastDelivery().toMillis() >= reclaimIdleMs;
     }
 
-    private void processRecord(MapRecord<String, Object, Object> record) {
+    private void processRecord(MapRecord<String, Object, Object> record, String operationName) {
         Map<Object, Object> eventFields = record.getValue();
 
         String eventId = (String) eventFields.get("eventId");
@@ -203,6 +208,7 @@ public class FeedEventWorker {
 
         if (eventId == null || postId == null) {
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, record.getId());
+            feedMetricsService.recordServiceError(operationName, "MALFORMED_EVENT");
             return;
         }
 
@@ -221,21 +227,23 @@ public class FeedEventWorker {
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, record.getId());
         } catch (Exception exception) {
             int attemptCount = recordFailureAttempt(eventId, exception);
+            feedMetricsService.recordServiceError(operationName, "PROCESSING_ERROR");
 
             if (attemptCount < maxProcessingAttempts) {
-                // TODO: add metrics
+                feedMetricsService.recordAsyncWorkerRetry(operationName);
                 return;
             }
 
-            moveToDeadLetter(record, eventFields, eventId, attemptCount, exception);
+            moveToDeadLetter(record, eventFields, eventId, attemptCount, exception, operationName);
             redisTemplate.opsForStream().acknowledge(streamKey, consumerGroup, record.getId());
             feedEventFailureRepository.deleteById(eventId);
+            feedMetricsService.recordAsyncWorkerDeadLetter(operationName);
         }
     }
 
     private void moveToDeadLetter(MapRecord<String, Object, Object> record,
                                   Map<Object, Object> eventFields, String eventId, int attemptCount,
-                                  Exception exception) {
+                                  Exception exception, String operationName) {
         String payloadJson = toJson(eventFields);
         String failureReason = sanitizeErrorMessage(exception);
 
@@ -254,7 +262,7 @@ public class FeedEventWorker {
                             "payloadJson", payloadJson
                     )));
         } catch (Exception redisException) {
-            // TODO: add metrics
+            feedMetricsService.recordServiceError(operationName, "DLQ_STREAM_PLUBLISH_ERROR");
         }
     }
 

@@ -3,9 +3,9 @@ spring:
     name: feedme
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/feedme
-    username: feedme
-    password: feedme
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/feedme }
+    username: ${SPRING_DATASOURCE_USERNAME:feedme }
+    password: ${SPRING_DATASOURCE_PASSWORD:feedme }
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -14,8 +14,8 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:localhost }
+      port: ${SPRING_DATA_REDIS_PORT:6379 }
       repositories:
         enabled: false
 
@@ -35,4 +35,17 @@ feed:
       reclaims-fixed-delay-ms: 5000
       reclaim-idle-ms: 30000
       reclaim-batch-size: 50
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 

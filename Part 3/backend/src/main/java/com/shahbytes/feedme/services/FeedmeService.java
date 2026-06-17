@@ -35,43 +35,63 @@ public class FeedmeService {
     private final FollowRelationRepository followRelationRepository;
     private final FeedCacheService feedCacheService;
     private final FeedEventOutboxService feedEventOutboxService;
+    private final FeedMetricsService feedMetricsService;
 
-    public FeedmeService(UserProfileRepository userProfileRepository, PostRepository postRepository, PostCreationRequestRepository postCreationRequestRepository, FollowRelationRepository followRelationRepository, FeedCacheService feedCacheService, FeedEventOutboxService feedEventOutboxService) {
+    public FeedmeService(UserProfileRepository userProfileRepository, PostRepository postRepository, PostCreationRequestRepository postCreationRequestRepository, FollowRelationRepository followRelationRepository, FeedCacheService feedCacheService, FeedEventOutboxService feedEventOutboxService, FeedMetricsService feedMetricsService) {
         this.userProfileRepository = userProfileRepository;
         this.postRepository = postRepository;
         this.postCreationRequestRepository = postCreationRequestRepository;
         this.followRelationRepository = followRelationRepository;
         this.feedCacheService = feedCacheService;
         this.feedEventOutboxService = feedEventOutboxService;
+        this.feedMetricsService = feedMetricsService;
     }
 
     @Transactional
     public PostResponse createPost(String authorId, String content, String idempotencyKey) {
+        long startedAtNanos = feedMetricsService.startTimer();
         UserProfile author = getUser(authorId);
         String authorType = author.isHotUser() ? "hot" : "normal";
 
         String normalizedCOntent = content.trim();
-        String requestHash = hashCreatePostRequest(authorId, normalizedCOntent);
 
-        IdempotentPostAttempt attempt = resolveCreatePostAttempt(authorId, idempotencyKey, requestHash);
+        try {
+            String requestHash = hashCreatePostRequest(authorId, normalizedCOntent);
 
-        if (attempt.replayedResponse().isPresent()) {
-            return attempt.replayedResponse.get();
+            IdempotentPostAttempt attempt = resolveCreatePostAttempt(authorId, idempotencyKey, requestHash);
+
+            if (attempt.replayedResponse().isPresent()) {
+                feedMetricsService.recordPostCreation(startedAtNanos, authorType, "replay");
+                return attempt.replayedResponse.get();
+            }
+
+            if (attempt.inProgress()) {
+                feedMetricsService.recordPostCreation(startedAtNanos, authorType, "in_progress");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Post creation request already in progress");
+            }
+
+            Post post = postRepository.save(new Post(
+                    UUID.randomUUID().toString(), author, normalizedCOntent
+            ));
+
+            feedEventOutboxService.enqueuePostCreated(post);
+
+            attempt.requestRecord().orElseThrow().markSucceeded(post.getId());
+
+            feedMetricsService.recordPostCreation(startedAtNanos, authorType, "new");
+
+            return toPostResponse(post);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode().equals(HttpStatus.CONFLICT)
+                    && exception.getReason() != null
+                    && exception.getReason().contains("Idempotency key")
+            ) {
+                feedMetricsService.recordPostCreation(startedAtNanos, authorType, "conflict");
+            }
+
+            feedMetricsService.recordServiceError("create_post", exception.getStatusCode().toString());
+            throw exception;
         }
-
-        if (attempt.inProgress()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Post creation request already in progress");
-        }
-
-        Post post = postRepository.save(new Post(
-                UUID.randomUUID().toString(), author, normalizedCOntent
-        ));
-
-        feedEventOutboxService.enqueuePostCreated(post);
-
-        attempt.requestRecord().orElseThrow().markSucceeded(post.getId());
-
-        return toPostResponse(post);
     }
 
     private IdempotentPostAttempt resolveCreatePostAttempt(String authorId, String idempotencyKey, String requestHash) {
@@ -154,21 +174,52 @@ public class FeedmeService {
     }
 
     public TimelinePageResponse getHomeFeed(String userId, String cursor, int limit) {
+        long startedAtNanos = feedMetricsService.startTimer();
         int pageSize = normalizeLimit(limit);
+        feedMetricsService.recordHomeFeedRequestedPageSize(limit, pageSize);
 
-        UserProfile viewer = getUser(userId);
+        try {
+            UserProfile viewer = getUser(userId);
 
-        FeedCursorCodec.FeedCursor pageCursor = FeedCursorCodec.parse(cursor);
+            FeedCursorCodec.FeedCursor pageCursor = FeedCursorCodec.parse(cursor);
 
-        VisibleAuthors visibleAuthors = getVisibleAuthors(viewer);
+            VisibleAuthors visibleAuthors = getVisibleAuthors(viewer);
 
-        BaseFeedSLiceResult baseSLiceResult = getBaseHomeFeedSlice(viewer.getId(), visibleAuthors.nonHotAuthorIds(), pageCursor, pageSize);
+            BaseFeedSLiceResult baseSLiceResult = getBaseHomeFeedSlice(viewer.getId(), visibleAuthors.nonHotAuthorIds(), pageCursor, pageSize);
 
-        FeedSlice hotSlice = getHotHomeFeedSlice(viewer.getId(), visibleAuthors, pageCursor, pageSize);
+            FeedSlice hotSlice = getHotHomeFeedSlice(viewer.getId(), visibleAuthors, pageCursor, pageSize);
 
-        int totalItems = Math.toIntExact(postRepository.countByAuthor_IdIn(visibleAuthors.allAuthorIds));
+            int totalItems = Math.toIntExact(postRepository.countByAuthor_IdIn(visibleAuthors.allAuthorIds));
 
-        return mergeHomeFeedSlices(userId, totalItems, pageSize, baseSLiceResult.slice, hotSlice);
+            TimelinePageResponse response = mergeHomeFeedSlices(userId, totalItems, pageSize, baseSLiceResult.slice, hotSlice);
+
+            feedMetricsService.recordHomeFeedRequest(startedAtNanos, baseSLiceResult.cacheOutcome(),
+                    determineMergeMode(baseSLiceResult.slice, hotSlice), response.nextCursor() != null,
+                    response.items().size());
+
+            return response;
+        } catch (ResponseStatusException exception) {
+            feedMetricsService.recordServiceError("get_home_feed", exception.getStatusCode().toString());
+            throw exception;
+        }
+    }
+
+    private String determineMergeMode(FeedSlice baseSlice, FeedSlice hotSlice) {
+        boolean hasBase = !baseSlice.items().isEmpty();
+        boolean hasHot = !hotSlice.items().isEmpty();
+        if (hasBase && hasHot) {
+            return "mixed";
+        }
+
+        if (hasBase) {
+            return "base_only";
+        }
+
+        if (hasHot) {
+            return "hot_only";
+        }
+
+        return "empty";
     }
 
     private TimelinePageResponse mergeHomeFeedSlices(String userId, int totalItems, int pageSize,
@@ -209,6 +260,8 @@ public class FeedmeService {
         String nextCursor = hasMore && !pageItems.isEmpty()
                 ? FeedCursorCodec.encode(pageItems.get(pageItems.size() - 1))
                 : null;
+
+        feedMetricsService.recordHomeFeedMerge(determineMergeMode(baseSlice, hotSlice), baseItemsUsed, hotItemsUsed);
 
         return new TimelinePageResponse(userId, TimelineMode.HOME, totalItems, pageItems, nextCursor);
     }
@@ -315,20 +368,25 @@ public class FeedmeService {
     private Optional<FeedSlice> getCachedBaseHomeFeedSlice(String userId, FeedCursorCodec.FeedCursor cursor,
                                                            int pageSize) {
         if (cursor != null) {
+            feedMetricsService.recordHomeFeedCacheLookup("bypass_cursor");
             return Optional.empty();
         }
 
         if (pageSize > FeedCacheService.DEFAULT_PAGE_SIZE) {
+            feedMetricsService.recordHomeFeedCacheLookup("bypass_page_size");
             return Optional.empty();
         }
 
         Optional<TimelinePageResponse> cachedPage = feedCacheService.getHomeFeed(userId);
 
         if (cachedPage.isEmpty()) {
+            feedMetricsService.recordHomeFeedCacheLookup("miss");
             return Optional.empty();
         }
 
-        return adaptCachedFirstPage(cachedPage.get(), pageSize);
+        Optional<FeedSlice> adapted = adaptCachedFirstPage(cachedPage.get(), pageSize);
+        feedMetricsService.recordHomeFeedCacheLookup(adapted.isPresent() ? "hit" : "incomplete");
+        return adapted;
     }
 
     private Optional<FeedSlice> adaptCachedFirstPage(TimelinePageResponse cachedPage, int pageSize) {
@@ -381,7 +439,10 @@ public class FeedmeService {
     }
 
     public TimelinePageResponse getUserFeed(String userId, String cursor, int limit) {
+        long startedAtNanos = feedMetricsService.startTimer();
         int pageSize = normalizeLimit(limit);
+
+        feedMetricsService.recordUserFeedRequestedPageSize(limit, pageSize);
 
         try {
             getUser(userId);
@@ -389,9 +450,11 @@ public class FeedmeService {
             FeedCursorCodec.FeedCursor pageCursor = FeedCursorCodec.parse(cursor);
             List<Post> posts = fetchUserFeedPosts(userId, pageCursor, pageSize + 1);
             int totalItems = Math.toIntExact(postRepository.countByAuthor_Id(userId));
-            return buildTimelinePage(userId, TimelineMode.USER, posts, totalItems, pageSize);
+            TimelinePageResponse response = buildTimelinePage(userId, TimelineMode.USER, posts, totalItems, pageSize);
+            feedMetricsService.recordUserFeedRequest(startedAtNanos, response.nextCursor() != null, response.items().size());
+            return response;
         } catch (ResponseStatusException e) {
-            // use metrics here
+            feedMetricsService.recordServiceError("get_user_feed", e.getStatusCode().toString());
             throw e;
         }
     }
@@ -428,9 +491,11 @@ public class FeedmeService {
 
     private void applyDeliveryStrategy(Post post) {
         if (post.getAuthor().isHotUser()) {
-            // TODO: metrics
+            feedMetricsService.recordDeliveryPath("hybrid_pull");
             return;
         }
+
+        feedMetricsService.recordDeliveryPath("fan_out_on_write");
 
         for (String viewerId : getAffectedViewerIds(post.getAuthor().getId())) {
             Set<String> visibleAuthorIds = getVisibleAuthors(getUser(viewerId)).allAuthorIds();
@@ -450,6 +515,7 @@ public class FeedmeService {
 
     @Transactional
     public FollowResponse follow(String followerId, String targetUserId) {
+        long startedAtNanos = feedMetricsService.startTimer();
         try {
             validateFollowRequest(followerId, targetUserId);
 
@@ -458,11 +524,15 @@ public class FeedmeService {
 
             FollowRelationId relationId = new FollowRelationId(followerId, targetUserId);
 
+            boolean createdRelation = false;
+
             if (!followRelationRepository.existsById(relationId)) {
                 followRelationRepository.save(new FollowRelation(follower, target));
+                createdRelation = true;
             }
 
             feedCacheService.evictHomeFeed(followerId);
+            feedMetricsService.recordFollowRequest(startedAtNanos, "follow", createdRelation);
 
             return new FollowResponse(followerId, targetUserId, true,
                     Math.toIntExact(
@@ -470,8 +540,8 @@ public class FeedmeService {
                     )
             );
 
-        } catch (Exception exception) {
-            exception.printStackTrace();
+        } catch (ResponseStatusException exception) {
+            feedMetricsService.recordServiceError("follow", exception.getStatusCode().toString());
             throw exception;
         }
     }
@@ -489,12 +559,16 @@ public class FeedmeService {
 
     @Transactional
     public FollowResponse unfollow(String followerId, String targetUserId) {
+        long startedAtNanos = feedMetricsService.startTimer();
+
         try {
             validateFollowRequest(followerId, targetUserId);
             FollowRelationId relationId = new FollowRelationId(followerId, targetUserId);
+            boolean relationExisted = followRelationRepository.existsById(relationId);
 
             followRelationRepository.deleteById(relationId);
             feedCacheService.evictHomeFeed(followerId);
+            feedMetricsService.recordFollowRequest(startedAtNanos, "unfollow", relationExisted);
 
             return new FollowResponse(followerId, targetUserId, false,
                     Math.toIntExact(
@@ -502,7 +576,8 @@ public class FeedmeService {
                     )
             );
 
-        } catch (Exception exception) {
+        } catch (ResponseStatusException exception) {
+            feedMetricsService.recordServiceError("unfollow", exception.getStatusCode().toString());
             throw exception;
         }
     }

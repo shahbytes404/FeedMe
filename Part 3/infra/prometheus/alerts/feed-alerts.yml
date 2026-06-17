@@ -1,0 +1,14 @@
+groups:
+  - name: feedme-observability
+    rules:
+      - alert: FeedHomeLatencyHigh
+        expr: rate(feedme_feed_home_latency_seconds_sum[5m])/
+          rate(feedme_feed_home_latency_seconds_count[5m]) > 0.4
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Home feed average latency is elevated
+          description: Home-feed latency has been above 400ms for at least 2 minutes
+
+

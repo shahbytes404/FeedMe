@@ -3,6 +3,7 @@ package com.shahbytes.feedme.services.schedulers;
 import com.shahbytes.feedme.models.OutboxEvent;
 import com.shahbytes.feedme.models.OutboxEventStatus;
 import com.shahbytes.feedme.repository.OutboxEventRepository;
+import com.shahbytes.feedme.services.FeedMetricsService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
@@ -26,17 +27,19 @@ public class FeedEventOutboxPublisher {
     private final String streamKey;
     private final int publishBatchSize;
     private final int maxAttempts;
+    private final FeedMetricsService feedMetricsService;
 
     public FeedEventOutboxPublisher(StringRedisTemplate redisTemplate,
                                     OutboxEventRepository outboxEventRepository,
                                     @Value("${feed.async.stream.key:feed:events}") String streamKey,
                                     @Value("${feed.async.publisher.batch-size:100}") int publishBatchSize,
-                                    @Value("${feed.async.publisher.max-attempts:10}") int maxAttempts) {
+                                    @Value("${feed.async.publisher.max-attempts:10}") int maxAttempts, FeedMetricsService feedMetricsService) {
         this.redisTemplate = redisTemplate;
         this.outboxEventRepository = outboxEventRepository;
         this.streamKey = streamKey;
         this.publishBatchSize = publishBatchSize;
         this.maxAttempts = maxAttempts;
+        this.feedMetricsService = feedMetricsService;
     }
 
     @Scheduled(fixedDelayString = "${feed.async.publisher.fixed-delay-ms:1000}")
@@ -65,6 +68,7 @@ public class FeedEventOutboxPublisher {
             } catch (Exception exception) {
                 long delaySeconds = getDelaySeconds(event);
                 event.scheduleRetry(Instant.now().plusSeconds(delaySeconds), maxAttempts);
+                feedMetricsService.recordServiceError("publish_outbox_event", "REDIS_ERROR");
             }
         }
     }

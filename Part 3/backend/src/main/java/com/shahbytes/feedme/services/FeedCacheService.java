@@ -21,10 +21,12 @@ public class FeedCacheService {
     private final StringRedisTemplate redisTemplate;
 
     private final ObjectMapper objectMapper;
+    private final FeedMetricsService feedMetricsService;
 
-    public FeedCacheService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+    public FeedCacheService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper, FeedMetricsService feedMetricsService) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.feedMetricsService = feedMetricsService;
     }
 
     public Optional<TimelinePageResponse> getHomeFeed(String userId) {
@@ -47,6 +49,7 @@ public class FeedCacheService {
 
     public void cacheHomeFeed(TimelinePageResponse tpresponse) {
         writeHomeFeed(tpresponse);
+        feedMetricsService.recordCacheMutation("write_first_page");
     }
 
     private void writeHomeFeed(TimelinePageResponse response) {
@@ -88,6 +91,7 @@ public class FeedCacheService {
                             ? FeedCursorCodec.encode(updatedItems.get(updatedItems.size() - 1))
                             : null
             ));
+            feedMetricsService.recordCacheMutation("prepend");
 
         } catch (Exception e) {
 
@@ -97,6 +101,7 @@ public class FeedCacheService {
     public void evictHomeFeed(String userId) {
         try {
             redisTemplate.delete(homeFeedKey(userId));
+            feedMetricsService.recordCacheMutation("evict");
         } catch (Exception e) {
             e.printStackTrace();
         }
