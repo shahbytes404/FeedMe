@@ -1,0 +1,31 @@
+<article class="panel composer composer--social">
+  <div class="composer__topline">
+    <div>
+      <p class="panel__eyebrow">Create post</p>
+      <h2>What is happening?</h2>
+    </div>
+    <app-user-menu
+      class="composer__author-menu"
+      menuId="author"
+      [users]="users()"
+      [selectedLabel]="selectedAuthorLabel()"
+      [selectedBadge]="selectedAuthorBadge()"
+      [open]="authorMenuOpen()"
+      (menuToggle)="menuToggle.emit({ menuId: 'author', event: $event })"
+      (userSelected)="authorSelected.emit($event)"
+    />
+  </div>
+
+  <textarea
+    rows="4"
+    maxlength="280"
+    [ngModel]="draft()"
+    (ngModelChange)="draftChanged.emit($event)"
+    placeholder="Share something"
+  ></textarea>
+
+  <div class="composer__footer">
+    <span>{{ draft().length }}/280</span>
+    <button type="button" (click)="publish.emit()">Publish</button>
+  </div>
+</article>

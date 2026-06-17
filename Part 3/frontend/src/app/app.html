@@ -34,5 +34,70 @@
         (actionSelected)="toggleFollow($event)"
       />
     </aside>
+
+    <section class="feed-column">
+      <app-post-composer
+        [users]="users()"
+        [selectedAuthorLabel]="selectedAuthorLabel()"
+        [selectedAuthorBadge]="selectedAuthorBadge()"
+        [authorMenuOpen]="isMenuOpen('author')"
+        [draft]="draftPost()"
+        (draftChanged)="draftPost.set($event)"
+        (menuToggle)="toggleMenu($event.menuId, $event.event)"
+        (authorSelected)="selectAuthor($event)"
+        (publish)="createPost()"
+      />
+      <app-feed-panel
+        eyebrow="Home timeline"
+        [title]="homeFeedTitle()"
+        [feed]="homeFeed()"
+        [loading]="loadingHome()"
+        [loadingMore]="loadingMoreHome()"
+        [nextCursor]="homeNextCursor()"
+        [badgeForUser]="userBadgeResolver"
+        [showScore]="true"
+        [showReason]="true"
+        emptyText="No posts available for this veiwer yet."
+        (loadMore)="loadMoreHomeFeed()"
+      />
+    </section>
+
+    <aside class="sidebar sidebar--right">
+      <article class="panel sidebar-panel">
+        <div class="panel__header">
+          <p class="panel__eyebrow">Author timeline</p>
+          <h2>Inspect a profile</h2>
+        </div>
+
+        <app-user-menu
+          class="timeline-selector"
+          menuId="timeline"
+          [compact]="true"
+          [users]="users()"
+          [selectedLabel]="selectedTimelineUserLabel()"
+          [selectedBadge]="selectedTimelineUserBadge()"
+          [open]="isMenuOpen('timeline')"
+          (menuToggle)="toggleMenu('timeline', $event)"
+          (userSelected)="selectTimelineUser($event)"
+        />
+
+        <app-feed-panel
+          eyebrow="Author timeline"
+          title="Posts"
+          [feed]="userFeed()"
+          [loading]="loadingUser()"
+          [loadingMore]="loadingMoreUser()"
+          [nextCursor]="userNextCursor()"
+          [badgeForUser]="userBadgeResolver"
+          [compact]="true"
+          [framed]="false"
+          [showHeader]="false"
+          emptyText="No posts for this author yet."
+          (loadMore)="loadMoreUserFeed()"
+        />
+      </article>
+
+      <app-flow-trace [currentLabel]="activityLabel()" [entries]="activityEntries()" />
+    </aside>
   </section>
 </main>

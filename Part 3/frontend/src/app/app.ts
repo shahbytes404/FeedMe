@@ -8,16 +8,26 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { FeedApiService } from './services/feed-api.service';
-import { FeedItemResponse, MenuId, TimelinePageResponse, UserProfile } from './feed.models';
+import {
+  ActivityEntry,
+  FeedItemResponse,
+  MenuId,
+  TimelinePageResponse,
+  UserProfile,
+} from './feed.models';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppTopbar } from './components/app-topbar/app-topbar';
 import { ProfileCard } from './components/profile-card/profile-card';
 import { UserListPanel } from './components/user-list-panel/user-list-panel';
+import { PostComposer } from './components/post-composer/post-composer';
+import { FeedPanel } from './components/feed-panel/feed-panel';
+import { UserMenu } from './components/user-menu/user-menu';
+import { FlowTrace } from './components/flow-trace/flow-trace';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [AppTopbar, ProfileCard, UserListPanel],
+  imports: [AppTopbar, ProfileCard, UserListPanel, PostComposer, FeedPanel, UserMenu, FlowTrace],
   templateUrl: './app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,6 +42,8 @@ export class App {
   protected readonly selectedViewerId = signal('u1');
   protected readonly selectedAuthorId = signal('u1');
   protected readonly selectedTimelineUserId = signal('u2');
+
+  protected readonly draftPost = signal('');
 
   protected readonly followedUserIds = signal<ReadonlySet<string>>(new Set<string>());
 
@@ -50,6 +62,14 @@ export class App {
   protected readonly requestError = signal('');
 
   protected readonly activeMenu = signal<MenuId | null>(null);
+
+  protected readonly activityEntries = signal<ActivityEntry[]>([
+    {
+      id: crypto.randomUUID(),
+      label: 'Idle',
+      createdAt: new Date(),
+    },
+  ]);
 
   protected readonly hotUserCount = computed(
     () => this.users().filter((user) => user.hotUser).length,
@@ -82,6 +102,10 @@ export class App {
     this.getUserBadge(this.selectedTimelineUserId()),
   );
 
+  protected readonly selectedTimelineUserLabel = computed(() =>
+    this.getUserLabel(this.selectedTimelineUserId()),
+  );
+
   protected readonly viewerFollowing = computed(() =>
     this.users().filter((user) => !this.isViewer(user.id) && this.isFollowing(user.id)),
   );
@@ -90,12 +114,26 @@ export class App {
     this.users().filter((user) => !this.isViewer(user.id) && !this.isFollowing(user.id)),
   );
 
+  protected readonly homeFeedTitle = computed(
+    () => `${this.selectedViewer()?.name ?? 'Viewer'}'s feed `,
+  );
+
+  protected readonly userBadgeResolver = (userId: string): string | null =>
+    this.getUserBadge(userId);
+
+  private recordActivity(label: string) {
+    this.activityLabel.set(label);
+    this.activityEntries.update((entries) =>
+      [{ id: crypto.randomUUID(), label, createdAt: new Date() }, ...entries].slice(0, 8),
+    );
+  }
+
   constructor() {
     this.loadUsers();
   }
 
   private loadUsers() {
-    this.activityLabel.set('Loading users');
+    this.recordActivity('Loading users');
     this.api
       .getUsers()
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -105,11 +143,11 @@ export class App {
           this.ensureSelectedUserExist(users);
           this.loadViewerFollowing();
           this.refreshAll();
-          this.activityLabel.set('Users loaded');
+          this.recordActivity('Users loaded');
         },
         error: () => {
           this.requestError.set('Unable to load users. Start the backend on port 8080');
-          this.activityLabel.set('User load failed');
+          this.recordActivity('User load failed');
         },
       });
   }
@@ -149,7 +187,7 @@ export class App {
             return;
           }
           this.requestError.set('Unable to load the follow graph');
-          this.activityLabel.set('Follow graph load failed');
+          this.recordActivity('Follow graph load failed');
         },
       });
   }
@@ -163,6 +201,13 @@ export class App {
     this.loadHomeFeedPage(null, false);
   }
 
+  protected loadMoreHomeFeed() {
+    if (!this.homeNextCursor()) {
+      return;
+    }
+    this.loadHomeFeedPage(this.homeNextCursor(), true);
+  }
+
   private loadHomeFeedPage(cursor: string | null, append: boolean) {
     const viewerId = this.selectedViewerId();
     if (append) {
@@ -172,9 +217,7 @@ export class App {
       this.requestError.set('');
       this.homeFeed.set(null);
       this.homeNextCursor.set(null);
-      this.activityLabel.set(
-        `Loading home feed for ${this.getUserById(viewerId)?.name ?? viewerId}`,
-      );
+      this.recordActivity(`Loading home feed for ${this.getUserById(viewerId)?.name ?? viewerId}`);
     }
 
     this.api
@@ -197,7 +240,7 @@ export class App {
           this.homeNextCursor.set(response.nextCursor);
           this.loadingHome.set(false);
           this.loadingMoreHome.set(false);
-          this.activityLabel.set(
+          this.recordActivity(
             `Home feed ready for ${this.getUserById(viewerId)?.name ?? viewerId}`,
           );
         },
@@ -209,13 +252,20 @@ export class App {
           this.requestError.set('Unable to load the home feed. Start the backend on port 8080.');
           this.loadingHome.set(false);
           this.loadingMoreHome.set(false);
-          this.activityLabel.set('Home feed load failed');
+          this.recordActivity('Home feed load failed');
         },
       });
   }
 
   private loadUserFeed() {
     this.loadUserFeedPage(null, false);
+  }
+
+  protected loadMoreUserFeed() {
+    if (!this.userNextCursor()) {
+      return;
+    }
+    this.loadUserFeedPage(this.userNextCursor(), true);
   }
 
   protected getUserById(userId: string): UserProfile | undefined {
@@ -243,7 +293,7 @@ export class App {
       this.loadingUser.set(true);
       this.userFeed.set(null);
       this.userNextCursor.set(null);
-      this.activityLabel.set(
+      this.recordActivity(
         `Loading author timeline fir ${this.getUserById(timeLineUserId)?.name ?? timeLineUserId}`,
       );
     }
@@ -267,7 +317,7 @@ export class App {
           this.userNextCursor.set(response.nextCursor);
           this.loadingUser.set(false);
           this.loadingMoreUser.set(false);
-          this.activityLabel.set(
+          this.recordActivity(
             `Author timeline ready for ${this.getUserById(timeLineUserId)?.name ?? timeLineUserId}`,
           );
         },
@@ -278,7 +328,7 @@ export class App {
           this.requestError.set('Unable to load the selected user timeline');
           this.loadingUser.set(false);
           this.loadingMoreUser.set(false);
-          this.activityLabel.set('Author timeline load failed');
+          this.recordActivity('Author timeline load failed');
         },
       });
   }
@@ -292,7 +342,7 @@ export class App {
     const viewerId = this.selectedViewerId();
     const isFollowing = this.isFollowing(targetUserId);
     const target = this.getUserById(targetUserId);
-    this.activityLabel.set(
+    this.recordActivity(
       `${isFollowing ? 'Unfollowing' : 'Following'} ${target?.name ?? targetUserId}`,
     );
 
@@ -313,13 +363,13 @@ export class App {
         });
 
         this.loadHomeFeed();
-        this.activityLabel.set(
+        this.recordActivity(
           `${response.following ? 'Followed' : 'Unfollowed'} ${target?.name ?? targetUserId}`,
         );
       },
       error: () => {
         this.requestError.set('Follow state could not be updated.');
-        this.activityLabel.set('Follow update failed');
+        this.recordActivity('Follow update failed');
       },
     });
   }
@@ -350,5 +400,40 @@ export class App {
 
   private isFollowing(targetUserId: string) {
     return this.followedUserIds().has(targetUserId);
+  }
+
+  protected selectAuthor(userId: string) {
+    this.selectedAuthorId.set(userId);
+    this.activeMenu.set(null);
+  }
+
+  protected selectTimelineUser(userId: string) {
+    this.selectedTimelineUserId.set(userId);
+    this.activeMenu.set(null);
+    this.loadUserFeed();
+  }
+
+  protected createPost() {
+    const content = this.draftPost().trim();
+    if (!content) {
+      return;
+    }
+
+    const author = this.selectedAuthor();
+    this.recordActivity(`Publishing as ${author?.name ?? this.selectedAuthorId()}`);
+    this.api
+      .createPost(this.selectedAuthorId(), content)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.draftPost.set('');
+          this.refreshAll();
+          this.recordActivity(`Post published for ${author?.name ?? this.selectedAuthorId()}`);
+        },
+        error: () => {
+          this.requestError.set('Post creation failed.');
+          this.recordActivity('Post publish failed');
+        },
+      });
   }
 }

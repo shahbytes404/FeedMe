@@ -51,3 +51,9 @@ export interface FollowingResponse {
 }
 
 export type MenuId = 'viewer' | 'author' | 'timeline';
+
+export interface ActivityEntry {
+  id: string;
+  label: string;
+  createdAt: Date;
+}

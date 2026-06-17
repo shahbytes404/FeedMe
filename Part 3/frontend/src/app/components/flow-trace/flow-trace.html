@@ -1,0 +1,18 @@
+<article class="panel sidebar-panel">
+  <div class="panel__header">
+    <p class="panel__eyebrow">Activity</p>
+    <h2>{{ currentLabel() }}</h2>
+  </div>
+
+  <ol class="activity-list">
+    @for (entry of entries(); track entry.id; let first = $first) {
+      <li class="activity-item" [class.activity-item--current]="first">
+        <span class="activity-item__marker"></span>
+        <div>
+          <strong>{{ entry.label }}</strong>
+          <time>{{ entry.createdAt | date: 'shortTime' }}</time>
+        </div>
+      </li>
+    }
+  </ol>
+</article>
