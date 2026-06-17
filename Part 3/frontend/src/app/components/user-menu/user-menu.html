@@ -1,0 +1,28 @@
+<div class="menu-shell" [class.menu-shell--compact]="compact()" (click)="$event.stopPropagation()">
+  <button class="menu-trigger" type="button" (click)="menuToggle.emit($event)">
+    <span class="menu-trigger__content">
+      <span>
+        {{ selectedLabel() }}
+      </span>
+      @if (selectedBadge()) {
+        <small class="user-badge user-badge--hot">{{ selectedBadge() }}</small>
+      }
+    </span>
+    <span class="menu-chevron" [class.menu-chevron--open]="open()">+</span>
+  </button>
+
+  @if (open()) {
+    <div class="menu-list">
+      @for (user of users(); track user.id) {
+        <button class="menu-option" type="button" (click)="userSelected.emit(user.id)">
+          <span class="menu-trigger__content">
+            <span>{{ getUserLabel(user) }}</span>
+            @if (user.hotUser) {
+              <small class="user-badge user-badge--hot">Hot user</small>
+            }
+          </span>
+        </button>
+      }
+    </div>
+  }
+</div>

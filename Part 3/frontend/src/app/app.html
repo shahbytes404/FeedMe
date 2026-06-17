@@ -1,19 +1,5 @@
 <main class="shell">
-  <header class="topbar panel">
-    <div class="brand-block">
-      <p class="eyebrow">FeedMe</p>
-      <h1>Home</h1>
-      <p class="topbar__subtext">A social feed playground with real write and read paths.</p>
-    </div>
-
-    <div class="topbar_controls">
-      <div class="topbar__facts">
-        <span class="topbar-chip">{{ users().length }} users</span>
-        <span class="topbar-chip">{{ hotUserCount() }} hot users</span>
-        <span class="topbar-chip">Fan-out + hybrid pull</span>
-      </div>
-    </div>
-  </header>
+  <app-topbar [userCount]="users().length" [hotUserCount]="hotUserCount()" />
 
   @if (requestError()) {
     <p class="error-banner">{{ requestError() }}</p>
@@ -21,19 +7,32 @@
 
   <section class="app-grid">
     <aside class="sidebar sidebar--left">
-      <article class="panel profile-card">
-        <p class="panel__eyebrow">Current viewer</p>
-        <div class="menu-shell profile-card__selector" (click)="$event.stopPropagation()">
-          <button class="menu-trigger" type="button" (click)="toggleMenu('viewer', $event)">
-            <span class="menu-trigger__content">
-              <span>{{ selectedViewerLabel() }}</span>
-              @if (selectedViewerBadge()) {
-                <small class="user-badge user-badge--hot">{{ selectedViewerBadge() }}</small>
-              }
-            </span>
-          </button>
-        </div>
-      </article>
+      <app-profile-card
+        [users]="users()"
+        [viewer]="selectedViewer()"
+        [selectedLabel]="selectedViewerLabel()"
+        [selectedBadge]="selectedViewerBadge()"
+        [menuOpen]="isMenuOpen('viewer')"
+        (menuToggle)="toggleMenu($event.menuId, $event.event)"
+        (viewerSelected)="selectViewer($event)"
+      />
+      <app-user-list-panel
+        eyebrow="Following"
+        title="Your graph"
+        actionLabel="Following"
+        actionVariant="alt"
+        emptyText="Follow someone to shape the hoem feed."
+        [users]="viewerFollowing()"
+        (actionSelected)="toggleFollow($event)"
+      />
+
+      <app-user-list-panel
+        eyebrow="Suggested"
+        title="People to follow"
+        actionLabel="Follow"
+        [users]="suggestedUsers()"
+        (actionSelected)="toggleFollow($event)"
+      />
     </aside>
   </section>
 </main>

@@ -3,7 +3,7 @@ export interface UserProfile {
   handle: string;
   name: string;
   bio: string;
-  horUser: boolean;
+  hotUser: boolean;
 }
 
 export interface PostResponse {

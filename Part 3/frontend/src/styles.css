@@ -1,1 +1,49 @@
 /* You can add global styles to this file, and also import other style files */
+:root {
+  --font-display: 'Instrument Serif', serif;
+  --font-sans: 'Space Grotesk', sans-serif;
+  --text-primary: #f5f7fb;
+  --text-secondary: #b6c0d3;
+  --text-muted: #7f8ba1;
+  --surface-strong: rgba(7, 12, 22, 0.82);
+  --surface-soft: rgba(255, 255, 255, 0.05);
+  --surface-stroke: rgba(255, 255, 255, 0.08);
+  --surface-stroke-soft: rgba(255, 255, 255, 0.06);
+  --accent-soft: #ffd6c3;
+  --accent-warm: #ff8a5b;
+  --accent-cool: #7ba2ff;
+  --app-width: 1320px;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  background: #0d1321;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+app-root,
+app-topbar,
+app-profile-card,
+app-user-menu {
+  display: block;
+}

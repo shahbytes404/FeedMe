@@ -5,18 +5,23 @@ import {
   DestroyRef,
   inject,
   signal,
+  ViewEncapsulation,
 } from '@angular/core';
 import { FeedApiService } from './services/feed-api.service';
 import { FeedItemResponse, MenuId, TimelinePageResponse, UserProfile } from './feed.models';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppTopbar } from './components/app-topbar/app-topbar';
+import { ProfileCard } from './components/profile-card/profile-card';
+import { UserListPanel } from './components/user-list-panel/user-list-panel';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [],
+  imports: [AppTopbar, ProfileCard, UserListPanel],
   templateUrl: './app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
 })
 export class App {
   private readonly api = inject(FeedApiService);
@@ -47,7 +52,7 @@ export class App {
   protected readonly activeMenu = signal<MenuId | null>(null);
 
   protected readonly hotUserCount = computed(
-    () => this.users().filter((user) => user.horUser).length,
+    () => this.users().filter((user) => user.hotUser).length,
   );
   protected readonly selectedViewer = computed(
     () => this.getUserById(this.selectedViewerId()) ?? null,
@@ -75,6 +80,14 @@ export class App {
 
   protected readonly selectedTimelineUserBadge = computed(() =>
     this.getUserBadge(this.selectedTimelineUserId()),
+  );
+
+  protected readonly viewerFollowing = computed(() =>
+    this.users().filter((user) => !this.isViewer(user.id) && this.isFollowing(user.id)),
+  );
+
+  protected readonly suggestedUsers = computed(() =>
+    this.users().filter((user) => !this.isViewer(user.id) && !this.isFollowing(user.id)),
   );
 
   constructor() {
@@ -275,12 +288,67 @@ export class App {
     this.activeMenu.update((current) => (current === menuId ? null : menuId));
   }
 
+  protected toggleFollow(targetUserId: string) {
+    const viewerId = this.selectedViewerId();
+    const isFollowing = this.isFollowing(targetUserId);
+    const target = this.getUserById(targetUserId);
+    this.activityLabel.set(
+      `${isFollowing ? 'Unfollowing' : 'Following'} ${target?.name ?? targetUserId}`,
+    );
+
+    const request = isFollowing
+      ? this.api.unfollowUser(viewerId, targetUserId)
+      : this.api.followUser(viewerId, targetUserId);
+
+    request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (response) => {
+        this.followedUserIds.update((current) => {
+          const next = new Set(current);
+          if (response.following) {
+            next.add(targetUserId);
+          } else {
+            next.delete(targetUserId);
+          }
+          return next;
+        });
+
+        this.loadHomeFeed();
+        this.activityLabel.set(
+          `${response.following ? 'Followed' : 'Unfollowed'} ${target?.name ?? targetUserId}`,
+        );
+      },
+      error: () => {
+        this.requestError.set('Follow state could not be updated.');
+        this.activityLabel.set('Follow update failed');
+      },
+    });
+  }
+
   private getUserLabel(userId: string) {
     const user = this.getUserById(userId);
     return user ? `${user.name} - @${user.handle}` : userId;
   }
 
   private getUserBadge(userId: string): string | null {
-    return this.getUserById(userId)?.horUser ? 'Hot user' : null;
+    return this.getUserById(userId)?.hotUser ? 'Hot user' : null;
+  }
+
+  protected isMenuOpen(menuId: MenuId) {
+    return this.activeMenu() === menuId;
+  }
+
+  protected selectViewer(userId: string) {
+    this.selectedViewerId.set(userId);
+    this.activeMenu.set(null);
+    this.loadViewerFollowing();
+    this.loadHomeFeed();
+  }
+
+  private isViewer(userId: string) {
+    return userId === this.selectedViewerId();
+  }
+
+  private isFollowing(targetUserId: string) {
+    return this.followedUserIds().has(targetUserId);
   }
 }
