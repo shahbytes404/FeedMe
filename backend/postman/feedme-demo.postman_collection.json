@@ -1,0 +1,347 @@
+{
+  "info": {
+    "_postman_id": "f28767b3-1d77-4f08-88bb-6b2b6dd9f001",
+    "name": "feedme-demo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Users - List Seeded Users",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/users",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Follows - Get Following For Viewer",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/follows?followerId={{viewerId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "follows"
+          ],
+          "query": [
+            {
+              "key": "followerId",
+              "value": "{{viewerId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Feed - Get Home Feed",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/feed/home?userId={{viewerId}}&limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "feed",
+            "home"
+          ],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{viewerId}}"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Feed - Get Viewer Timeline",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/feed/user/{{viewerId}}?limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "feed",
+            "user",
+            "{{viewerId}}"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posts - Create Post",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('idempotencyKey', 'demo-post-' + Date.now());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('create post returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var json = pm.response.json();",
+              "if (json && json.id) {",
+              "    pm.environment.set('postId', json.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"authorId\": \"{{authorId}}\",\n  \"content\": \"Hello from Postman demo at {{$timestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "posts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posts - Get Created Post",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/posts/{{postId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "posts",
+            "{{postId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Feed - Refresh Viewer Timeline",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/feed/user/{{viewerId}}?limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "feed",
+            "user",
+            "{{viewerId}}"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Feed - Refresh Home Feed",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/feed/home?userId={{viewerId}}&limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "feed",
+            "home"
+          ],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{viewerId}}"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Follows - Follow Marcus As Viewer",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/follows/u2?followerId={{viewerId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "follows",
+            "u2"
+          ],
+          "query": [
+            {
+              "key": "followerId",
+              "value": "{{viewerId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Follows - Unfollow Marcus As Viewer",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/follows/u2?followerId={{viewerId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "follows",
+            "u2"
+          ],
+          "query": [
+            {
+              "key": "followerId",
+              "value": "{{viewerId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posts - Idempotency Replay",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"authorId\": \"{{authorId}}\",\n  \"content\": \"Hello from Postman demo at {{$timestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "posts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posts - Idempotency Conflict",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"authorId\": \"{{authorId}}\",\n  \"content\": \"This content should conflict with the previous request\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "posts"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "viewerId",
+      "value": "u1"
+    },
+    {
+      "key": "authorId",
+      "value": "u1"
+    },
+    {
+      "key": "postId",
+      "value": ""
+    },
+    {
+      "key": "idempotencyKey",
+      "value": ""
+    }
+  ]
+}

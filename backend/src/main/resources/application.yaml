@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: feedme
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/feedme}
+    username: ${SPRING_DATASOURCE_USERNAME:feedme}
+    password: ${SPRING_DATASOURCE_PASSWORD:feedme}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      repositories:
+        enabled: true
+
+feed:
+  async:
+    enabled: true
+
+    stream:
+      key: feed:events
+
+    publisher:
+      batch-size: 100
+      max-attempts: 10
+      fixed-delay-ms: 1000
+
+    consumer:
+      group: feed-workers
+      name: worker-1
+      batch-size: 100
+      max-processing-attempts: 5
+      dlq-stream-key: feed:events:dlq
+      reclaim-enabled: true
+      reclaim-fixed-delay-ms: 5000
+      reclaim-idle-ms: 30000
+      reclaim-batch-size: 50
+      fixed-delay-ms: 1000
+      recover-fixed-delay-ms: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
